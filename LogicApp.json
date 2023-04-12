@@ -1,0 +1,478 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "logicAppName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "metadata": {
+        "description": "Name of the Logic App."
+      }
+    },
+    "logicAppLocation": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "allowedValues": [
+        "[resourceGroup().location]",
+        "eastasia",
+        "southeastasia",
+        "centralus",
+        "eastus",
+        "eastus2",
+        "westus",
+        "northcentralus",
+        "southcentralus",
+        "northeurope",
+        "westeurope",
+        "japanwest",
+        "japaneast",
+        "brazilsouth",
+        "australiaeast",
+        "australiasoutheast",
+        "southindia",
+        "centralindia",
+        "westindia",
+        "canadacentral",
+        "canadaeast",
+        "uksouth",
+        "ukwest",
+        "westcentralus",
+        "westus2",
+        "koreacentral",
+        "koreasouth",
+        "francecentral",
+        "francesouth",
+        "uaecentral",
+        "uaenorth",
+        "southafricanorth",
+        "southafricawest",
+        "switzerlandnorth",
+        "switzerlandwest",
+        "germanynorth",
+        "germanywestcentral",
+        "norwaywest",
+        "norwayeast",
+        "brazilsoutheast",
+        "westus3",
+        "swedencentral",
+        "qatarcentral"
+      ],
+      "metadata": {
+        "description": "Location of the Logic App."
+      }
+    }
+  },
+  "variables": {},
+  "resources": [
+    {
+      "name": "[parameters('logicAppName')]",
+      "type": "Microsoft.Logic/workflows",
+      "location": "[parameters('logicAppLocation')]",
+      "tags": {
+        "displayName": "LogicApp"
+      },
+      "apiVersion": "2016-06-01",
+      "properties": {
+        "definition": {
+          "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+          "actions": {
+            "Initialize_variable_UserId": {
+              "type": "InitializeVariable",
+              "inputs": {
+                "variables": [
+                  {
+                    "name": "UserId",
+                    "type": "string",
+                    "value": "app"
+                  }
+                ]
+              },
+              "runAfter": {}
+            },
+            "Initialize_variable_Password": {
+              "type": "InitializeVariable",
+              "inputs": {
+                "variables": [
+                  {
+                    "name": "Password",
+                    "type": "string",
+                    "value": "#{ROPC.Password}#"
+                  }
+                ]
+              },
+              "runAfter": {
+                "Initialize_variable_UserId": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Initialize_variable_SubscriptionKeyName": {
+              "type": "InitializeVariable",
+              "inputs": {
+                "variables": [
+                  {
+                    "name": "SubscriptionKeyName",
+                    "type": "string",
+                    "value": "Ocp-Apim-Subscription-Key"
+                  }
+                ]
+              },
+              "runAfter": {
+                "Initialize_variable_Password": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Initialize_variable_SubscriptionKey": {
+              "type": "InitializeVariable",
+              "inputs": {
+                "variables": [
+                  {
+                    "name": "SubscriptionKey",
+                    "type": "string",
+                    "value": "#{tenantConfig.subscriptionKey}#"
+                  }
+                ]
+              },
+              "runAfter": {
+                "Initialize_variable_SubscriptionKeyName": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Initialize_variable_ApiManagementUrl": {
+              "type": "InitializeVariable",
+              "inputs": {
+                "variables": [
+                  {
+                    "name": "ApiManagementUrl",
+                    "type": "string",
+                    "value": "#{APIManagement.URL}#"
+                  }
+                ]
+              },
+              "runAfter": {
+                "Initialize_variable_SubscriptionKey": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "HTTP-Get_JWT_Token": {
+              "type": "Http",
+              "inputs": {
+                "method": "POST",
+                "uri": "@{variables('APIManagementURL')}/auth-service/api/v1/auth/login",
+                "headers": {
+                  "@variables('SubscriptionKeyName')": "@variables('SubscriptionKey')"
+                },
+                "body": {
+                  "Password": "@variables('Password')",
+                  "UserId": "@variables('UserId')"
+                }
+              },
+              "runAfter": {
+                "Initialize_variable_ApiManagementUrl": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Initialize_variable_JwtToken": {
+              "type": "InitializeVariable",
+              "inputs": {
+                "variables": [
+                  {
+                    "name": "JwtToken",
+                    "type": "string",
+                    "value": "@{body('HTTP-Get_JWT_Token')}"
+                  }
+                ]
+              },
+              "runAfter": {
+                "HTTP-Get_JWT_Token": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "HTTP_Get_User_Details": {
+              "type": "Http",
+              "inputs": {
+                "method": "POST",
+                "uri": "@{variables('ApiManagementUrl')}/user-service/api/v1/ṭenants/@{triggerBody()?['tenantId']}/user/users/get-users-by-userids",
+                "headers": {
+                  "@variables('SubscriptionKeyName')": "@variables('SubscriptionKey')"
+                },
+                "body": "@triggerBody()?['userIds']",
+                "authentication": {
+                  "type": "Raw",
+                  "value": "bearer @{variables('JwtToken')}"
+                }
+              },
+              "runAfter": {
+                "Initialize_variable_JwtToken": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Parse_JSON_User_Details": {
+              "type": "ParseJson",
+              "inputs": {
+                "content": "@body('HTTP_Get_User_Details')",
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "userId": {
+                        "type": "string"
+                      },
+                      "tenantId": {
+                        "type": "string"
+                      },
+                      "email": {
+                        "type": "string"
+                      },
+                      "externalId": {
+                        "type": "string"
+                      },
+                      "firstName": {
+                        "type": "string"
+                      },
+                      "lastName": {
+                        "type": "string"
+                      },
+                      "isActive": {
+                        "type": "boolean"
+                      },
+                      "loginName": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              },
+              "runAfter": {
+                "HTTP_Get_User_Details": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "HTTP_Get_Tenant_Details": {
+              "type": "Http",
+              "inputs": {
+                "method": "GET",
+                "uri": "@{variables('APIManagementURL')}/tenant-service/api/v1/tenants/@{triggerBody()?['tenantId']}/tenant",
+                "headers": {
+                  "@variables('SubscriptionKeyName')": "@variables('SubscriptionKey')"
+                },
+                "authentication": {
+                  "type": "Raw",
+                  "value": "bearer @{variables('JwtToken')}"
+                }
+              },
+              "runAfter": {
+                "Parse_JSON_User_Details": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Parse_JSON_TenantDetails": {
+              "type": "ParseJson",
+              "inputs": {
+                "content": "@body('HTTP_Get_Tenant_Details')",
+                "schema": {
+                  "properties": {
+                    "contactEmail": {
+                      "type": "string"
+                    },
+                    "contactPhone": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "tenantId": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              },
+              "runAfter": {
+                "HTTP_Get_Tenant_Details": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "HTTP_Get_Tenant_Primary_Settings": {
+              "type": "Http",
+              "inputs": {
+                "method": "GET",
+                "uri": "@{variables('APIManagementURL')}/configuration-service/api/v1/tenants/@{triggerBody()?['tenantId']}/configuration/theme/primary-setting",
+                "headers": {
+                  "@variables('SubscriptionKeyName')": "@variables('SubscriptionKey')"
+                },
+                "authentication": {
+                  "type": "Raw",
+                  "value": "bearer @{variables('JwtToken')}"
+                }
+              },
+              "runAfter": {
+                "Parse_JSON_TenantDetails": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Parse_JSON_Tenant_Primary_Settings": {
+              "type": "ParseJson",
+              "inputs": {
+                "content": "@body('HTTP_Get_Tenant_Primary_Settings')",
+                "schema": {
+                  "properties": {
+                    "buttonColorHex": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "linkColorHex": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "primaryColorHex": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "secondaryColorHex": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "tenantId": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              },
+              "runAfter": {
+                "HTTP_Get_Tenant_Primary_Settings": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Switch_Email_Type": {
+              "type": "Switch",
+              "expression": "@triggerBody()?['emailTypeId']",
+              "cases": {
+                "Case_Welcome_Email": {
+                  "case": 1,
+                  "actions": {
+                    "For_each_User": {
+                      "type": "Foreach",
+                      "foreach": "@body('Parse_JSON_User_Details')",
+                      "actions": {
+                        "HTTP_Reset_User_Password": {
+                          "type": "Http",
+                          "inputs": {
+                            "method": "PUT",
+                            "uri": "@{variables('ApiManagementUrl')}/auth-service/api/v1/auth/tenants/@{triggerBody()?['tenantId']}/reset-password/@{items('For_each_User')?['userId']}",
+                            "headers": {
+                              "@variables('SubscriptionKeyName')": "@variables('SubscriptionKey')"
+                            },
+                            "authentication": {
+                              "type": "Raw",
+                              "value": "bearer @{variables('JwtToken')}"
+                            }
+                          },
+                          "runAfter": {}
+                        },
+                        "HTTP_Send_Welcome_Email": {
+                          "type": "Http",
+                          "inputs": {
+                            "method": "POST",
+                            "uri": "@{variables('APIManagementURL')}/email-service/api/v1/tenants/@{triggerBody()?['tenantId']}/email/templates/1",
+                            "body": [
+                              {
+                                "buttonColor": "@body('Parse_JSON_Tenant_Primary_Settings')?['buttonColorHex']",
+                                "email": "@items('For_each_User')?['email']",
+                                "firstName": "@items('For_each_User')?['firstName']",
+                                "linkColor": "@body('Parse_JSON_Tenant_Primary_Settings')?['linkColorHex']",
+                                "programEmail": "@body('Parse_JSON_TenantDetails')?['contactEmail']",
+                                "programName": "@body('Parse_JSON_TenantDetails')?['name']",
+                                "programURL": "@body('Parse_JSON_TenantDetails')?['url']",
+                                "tempPassword": "@outputs('HTTP_Reset_User_Password')['headers']?['x-updated-resource']",
+                                "username": "@items('For_each_User')?['loginName']"
+                              }
+                            ],
+                            "authentication": {
+                              "type": "Raw",
+                              "value": "bearer @{variables('JwtToken')}"
+                            }
+                          },
+                          "runAfter": {
+                            "HTTP_Reset_User_Password": [
+                              "Succeeded"
+                            ]
+                          }
+                        }
+                      },
+                      "runAfter": {}
+                    }
+                  }
+                }
+              },
+              "default": {
+                "actions": {}
+              },
+              "runAfter": {
+                "Parse_JSON_Tenant_Primary_Settings": [
+                  "Succeeded"
+                ]
+              }
+            }
+          },
+          "parameters": {},
+          "triggers": {
+            "manual": {
+              "type": "Request",
+              "kind": "Http",
+              "inputs": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "tenantId": {
+                      "type": "string"
+                    },
+                    "userIds": {
+                      "type": "array"
+                    },
+                    "templateId": {
+                      "type": "string"
+                    },
+                    "emailTypeId": {
+                      "type": "integer"
+                    }
+                  }
+                },
+                "method": "POST"
+              }
+            }
+          },
+          "contentVersion": "1.0.0.0",
+          "outputs": {}
+        },
+        "parameters": {}
+      }
+    }
+  ],
+  "outputs": {}
+}
